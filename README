@@ -1,0 +1,41 @@
+A lightweight micro-service to provide fast wordcloud computations. TFIDF processing based on input language data (stopwords and document frequencies)
+
+
+
+Example startup showing commandline options:
+
+./wc_serve -datadir data/ -numstopwords 300 -port 8080 -secport 8081 -cert pki/server.crt -key pki/server.key 
+
+
+
+Example HTTP curl commands:
+
+curl 127.0.0.1:8080/
+["English", "Spanish"]
+
+curl --data "language=English&tfs={\"library\":12, \"housing\":2}" 127.0.0.1:8080/wordcloud
+{
+    "housing":{"df":2.3078061103e+10,"tf":1,"tfidf":-7.980885186332078},
+    "library":{"df":2.2973774768e+10,"tf":12,"tfidf":-27.796856392315934}
+}
+
+curl --data "language=Spanish&tfs=[{\"hablo\":4, \"casa\":7},{\"bibloteca\": 9}]" 127.0.0.1:8080/wordcloud/bulk
+[
+	{
+		"casa":{"df":4907.07,"tf":7,"tfidf":9.521970018079218},
+		"hablo":{"df":98255.3,"tf":4,"tfidf":0.5621370936625957}
+	},
+	{
+		"bibloteca":{"df":0,"tf":9,"tfidf":37.506333620718344}
+	}
+]
+
+
+
+The same endpoints can be used on HTTPS/2 endpoints as well. For example:
+
+curl -k --http2 --data "language=English&tfs={\"library\":12, \"housing\":2}" https://127.0.0.1:8081/wordcloud
+{
+	"housing":{"df":2.3078061103e+10,"tf":2,"tfidf":-13.512813251610794},
+	"library":{"df":2.2973774768e+10,"tf":12,"tfidf":-27.796856392315934}
+}
