@@ -1,18 +1,18 @@
 package main
 
 import (
-    "fmt"
-    "path/filepath"
-    "flag"
-    "io/ioutil"
-    "regexp"
-    "strings"
-    "strconv"
-    "math"
-    "encoding/json"
-    "log"
-    "github.com/julienschmidt/httprouter"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"github.com/julienschmidt/httprouter"
+	"io/ioutil"
+	"log"
+	"math"
 	"net/http"
+	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 )
 
 // Used to hold discovered valid language dirs
@@ -23,9 +23,9 @@ type Folder struct {
 
 // Used to hold language information needed for tfidf
 type LangData struct {
-	docfreqs map[string]float64
+	docfreqs  map[string]float64
 	stopwords map[string]bool
-	numdocs int
+	numdocs   int
 }
 
 // search for one-deep sub directories (that start with a capital letter) of the provided search directory
@@ -35,48 +35,50 @@ func find_valid_directories(searchdir string) []Folder {
 	// Search for directories starting with a capital letter
 	re := regexp.MustCompile("^[[:upper:]][a-z]+$")
 
-  	abs_path, _ := filepath.Abs(searchdir)
+	abs_path, _ := filepath.Abs(searchdir)
 
-    files, _ := ioutil.ReadDir(abs_path + "/")
-    for _, f := range files {
-        if f.IsDir() && re.MatchString(f.Name()) {
-        	valid_dirs = append(valid_dirs, Folder{f.Name(), abs_path + "/" + f.Name()})
-        }
-    }
-    return valid_dirs
+	files, _ := ioutil.ReadDir(abs_path + "/")
+	for _, f := range files {
+		if f.IsDir() && re.MatchString(f.Name()) {
+			valid_dirs = append(valid_dirs, Folder{f.Name(), abs_path + "/" + f.Name()})
+		}
+	}
+	return valid_dirs
 }
 
 // for a specific language directory, read pre-determined convention data
 func read_lang_data(langdir string, numstopwords int) LangData {
-	docfreqsF := "docfreqs.txt" // file contains "word float"
+	docfreqsF := "docfreqs.txt"   // file contains "word float"
 	stopwordsF := "stopwords.txt" // file contains "word"
-	numwordsF := "numdocs.txt" // file contains "int"
+	numwordsF := "numdocs.txt"    // file contains "int"
 
 	docfreqs := make(map[string]float64)
 	if content, err := ioutil.ReadFile(langdir + "/" + docfreqsF); err == nil {
 		lines := strings.Split(string(content), "\n")
 		for _, line := range lines {
-			elements := strings.Fields(line)	
+			elements := strings.Fields(line)
 			if len(elements) == 2 {
 				word := strings.ToLower(elements[0])
 				freq, _ := strconv.ParseFloat(elements[1], 64)
 				docfreqs[word] = docfreqs[word] + float64(freq)
 			}
 		}
-	} 
+	}
 
 	stopwords := make(map[string]bool)
 	if content, err := ioutil.ReadFile(langdir + "/" + stopwordsF); err == nil {
 		lines := strings.Split(string(content), "\n")
 		count := 0
 		for _, line := range lines {
-			elements := strings.Fields(line)	
+			elements := strings.Fields(line)
 			if len(elements) == 1 {
 				word := strings.ToLower(elements[0])
 				stopwords[word] = true
 
 				// read only the first N stopwords
-				if count >= numstopwords { break }
+				if count >= numstopwords {
+					break
+				}
 				count++
 			}
 		}
@@ -86,7 +88,7 @@ func read_lang_data(langdir string, numstopwords int) LangData {
 	if content, err := ioutil.ReadFile(langdir + "/" + numwordsF); err == nil {
 		lines := strings.Split(string(content), "\n")
 		for _, line := range lines {
-			elements := strings.Fields(line)	
+			elements := strings.Fields(line)
 			if len(elements) == 1 {
 				numdocs, _ = strconv.Atoi(elements[0])
 				break // all useful information should be only on the first line
@@ -120,7 +122,7 @@ func compute_wordcloud(raw_tfs map[string]int, langdata LangData) map[string]map
 			norm_tf := 1 + math.Log(float64(tf))
 			df := docfreqs[word]
 			norm_df := math.Log(float64(numdocs) / (1 + df))
-			tfidf := norm_tf * norm_df 
+			tfidf := norm_tf * norm_df
 
 			wordcloud[word] = map[string]float64{"tf": tf, "df": df, "tfidf": tfidf}
 		}
@@ -131,11 +133,11 @@ func compute_wordcloud(raw_tfs map[string]int, langdata LangData) map[string]map
 // curried web handler to provide a list of available languages
 func RootHandler(lang_lookup map[string]LangData) func(http.ResponseWriter, *http.Request, httprouter.Params) {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	    langs := make([]string, 0, len(lang_lookup))
-	    for k := range lang_lookup {
-	        langs = append(langs, k)
-	    }
-		
+		langs := make([]string, 0, len(lang_lookup))
+		for k := range lang_lookup {
+			langs = append(langs, k)
+		}
+
 		// Marshal provided interface into JSON structure
 		langsj, _ := json.Marshal(langs)
 
@@ -149,12 +151,12 @@ func RootHandler(lang_lookup map[string]LangData) func(http.ResponseWriter, *htt
 // curried web handler to provide individual wordcloud given a provided language and set of words with frequencies
 func WordcloudHandler(lang_lookup map[string]LangData) func(http.ResponseWriter, *http.Request, httprouter.Params) {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	    tfs := make(map[string]int)
+		tfs := make(map[string]int)
 
-	    language := r.FormValue("language")
-	    json.NewDecoder(strings.NewReader(r.FormValue("tfs"))).Decode(&tfs)
+		language := r.FormValue("language")
+		json.NewDecoder(strings.NewReader(r.FormValue("tfs"))).Decode(&tfs)
 
-	    var wordcloud map[string]map[string]float64
+		var wordcloud map[string]map[string]float64
 		if lang_data, ok := lang_lookup[language]; ok {
 			wordcloud = compute_wordcloud(tfs, lang_data)
 		} else {
@@ -163,25 +165,25 @@ func WordcloudHandler(lang_lookup map[string]LangData) func(http.ResponseWriter,
 			return
 		}
 
-	    // Marshal provided interface into JSON structure
-	    wcj, _ := json.Marshal(wordcloud)
+		// Marshal provided interface into JSON structure
+		wcj, _ := json.Marshal(wordcloud)
 
-	    // Write content-type, statuscode, payload
-	    w.Header().Set("Content-Type", "application/json")
-	    w.WriteHeader(200)
-	    fmt.Fprintf(w, "%s", wcj)
+		// Write content-type, statuscode, payload
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		fmt.Fprintf(w, "%s", wcj)
 	}
 }
 
 // curried bulk web handler to provide a list of wordclouds given a provided language and a list of sets of words with frequencies
 func WordcloudBulkHandler(lang_lookup map[string]LangData) func(http.ResponseWriter, *http.Request, httprouter.Params) {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	    manytfs := make([]map[string]int, 0, 500)
+		manytfs := make([]map[string]int, 0, 500)
 
-	    language := r.FormValue("language")
-	    json.NewDecoder(strings.NewReader(r.FormValue("tfs"))).Decode(&manytfs)
+		language := r.FormValue("language")
+		json.NewDecoder(strings.NewReader(r.FormValue("tfs"))).Decode(&manytfs)
 
-	    wordclouds := make([]map[string]map[string]float64, 0, len(manytfs))
+		wordclouds := make([]map[string]map[string]float64, 0, len(manytfs))
 		if lang_data, ok := lang_lookup[language]; ok {
 			for _, tfs := range manytfs {
 				wordcloud := compute_wordcloud(tfs, lang_data)
@@ -193,69 +195,69 @@ func WordcloudBulkHandler(lang_lookup map[string]LangData) func(http.ResponseWri
 			return
 		}
 
-	    // Marshal provided interface into JSON structure
-	    wcj, _ := json.Marshal(wordclouds)
+		// Marshal provided interface into JSON structure
+		wcj, _ := json.Marshal(wordclouds)
 
-	    // Write content-type, statuscode, payload
-	    w.Header().Set("Content-Type", "application/json")
-	    w.WriteHeader(200)
-	    fmt.Fprintf(w, "%s", wcj)
+		// Write content-type, statuscode, payload
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(200)
+		fmt.Fprintf(w, "%s", wcj)
 	}
 }
 
 func main() {
 	// Itemize command line args and output runtime to stdout
-    datadirPtr := flag.String("datadir", "", "Directory of language data")
-    numstopwordsPtr := flag.Int("numstopwords", 300, "The number of stopwords")
-    portPtr := flag.Int("port", 8080, "Port to host http server")
-    secportPtr := flag.Int("secport", 8081, "Secure port to host https server")
-    certPtr := flag.String("cert", "", "Path to cert for http2 & ssl")
-    keyPtr := flag.String("key", "", "Path to key for http2 & ssl")
-    flag.Parse()
+	datadirPtr := flag.String("datadir", "", "Directory of language data")
+	numstopwordsPtr := flag.Int("numstopwords", 300, "The number of stopwords")
+	portPtr := flag.Int("port", 8080, "Port to host http server")
+	secportPtr := flag.Int("secport", 8081, "Secure port to host https server")
+	certPtr := flag.String("cert", "", "Path to cert for http2 & ssl")
+	keyPtr := flag.String("key", "", "Path to key for http2 & ssl")
+	flag.Parse()
 
-    fmt.Println("datadir:", *datadirPtr)
-    fmt.Println("numstopwords:", *numstopwordsPtr)
-    fmt.Println("port:", *portPtr)
-    fmt.Println("secport:", *secportPtr)
-    fmt.Println("cert:", *certPtr)
-    fmt.Println("key:", *keyPtr)
-    fmt.Println("trailing args:", flag.Args())
-    
-    // Allocate principle in-memory data structure
-    lang_lookup := make(map[string]LangData)
+	fmt.Println("datadir:", *datadirPtr)
+	fmt.Println("numstopwords:", *numstopwordsPtr)
+	fmt.Println("port:", *portPtr)
+	fmt.Println("secport:", *secportPtr)
+	fmt.Println("cert:", *certPtr)
+	fmt.Println("key:", *keyPtr)
+	fmt.Println("trailing args:", flag.Args())
 
-    // Find valid directories and load in-memory data structure
-    valid_dirs := find_valid_directories(*datadirPtr)
-    for _, vdir := range valid_dirs {
-    	fmt.Println("Language: ", vdir.basename)
-    	fmt.Println("Directory: ", vdir.fullpath)
-    	temp_data := read_lang_data(vdir.fullpath, *numstopwordsPtr)
-    	lang_lookup[vdir.basename] = temp_data
-    }
+	// Allocate principle in-memory data structure
+	lang_lookup := make(map[string]LangData)
 
-    // Define router endpoints
-    router := httprouter.New()
-    router.GET("/", RootHandler(lang_lookup))
-    router.POST("/wordcloud", WordcloudHandler(lang_lookup))
-    router.POST("/wordcloud/bulk", WordcloudBulkHandler(lang_lookup))
+	// Find valid directories and load in-memory data structure
+	valid_dirs := find_valid_directories(*datadirPtr)
+	for _, vdir := range valid_dirs {
+		fmt.Println("Language: ", vdir.basename)
+		fmt.Println("Directory: ", vdir.fullpath)
+		temp_data := read_lang_data(vdir.fullpath, *numstopwordsPtr)
+		lang_lookup[vdir.basename] = temp_data
+	}
 
-    // Check to see if HTTPS is possible to run
-    if (*certPtr != "") && (*keyPtr != "") && (*portPtr != *secportPtr) {
+	// Define router endpoints
+	router := httprouter.New()
+	router.GET("/", RootHandler(lang_lookup))
+	router.POST("/wordcloud", WordcloudHandler(lang_lookup))
+	router.POST("/wordcloud/bulk", WordcloudBulkHandler(lang_lookup))
+
+	// Check to see if HTTPS is possible to run
+	if (*certPtr != "") && (*keyPtr != "") && (*portPtr != *secportPtr) {
 		srvsec := &http.Server{
-	        Addr:    ":" + strconv.Itoa(*secportPtr), // Traditionally ":443"
-	        Handler: router,  // Handler
-	    }
-	    fmt.Println("Starting HTTPS server...")
- 		go srvsec.ListenAndServeTLS(*certPtr, *keyPtr)
-    } else {
-    	fmt.Println("Not starting HTTPS server. Lacking either cert, key or unique port separate from http.\n")
-    }
+			Addr:    ":" + strconv.Itoa(*secportPtr), // Traditionally ":443"
+			Handler: router,                          // Handler
+		}
+		fmt.Println("Starting HTTPS server...")
+		go srvsec.ListenAndServeTLS(*certPtr, *keyPtr)
+	} else {
+		fmt.Println("Not starting HTTPS server. Lacking either cert, key or unique port separate from http.\n")
+	}
 
-    // Always run HTTP server
- 	srv := &http.Server{
-        Addr:    ":" + strconv.Itoa(*portPtr), // Traditionally ":80"
-        Handler: router,  // Handler
-    }
-    fmt.Println("Starting HTTP server...")
-    log.Fatal(srv.ListenAndServe())
+	// Always run HTTP server
+	srv := &http.Server{
+		Addr:    ":" + strconv.Itoa(*portPtr), // Traditionally ":80"
+		Handler: router,                       // Handler
+	}
+	fmt.Println("Starting HTTP server...")
+	log.Fatal(srv.ListenAndServe())
 }
