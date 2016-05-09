@@ -151,6 +151,16 @@ func RootHandler(lang_lookup map[string]LangData) func(http.ResponseWriter, *htt
 // curried web handler to provide individual wordcloud given a provided language and set of words with frequencies
 func WordcloudHandler(lang_lookup map[string]LangData) func(http.ResponseWriter, *http.Request, httprouter.Params) {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		// 75MB max accepted payload
+		max_bytes := 75000000
+		r.Body = http.MaxBytesReader(w, r.Body, int64(max_bytes))
+		err := r.ParseForm()
+		if err != nil {
+			w.WriteHeader(413)
+			fmt.Fprintf(w, "Request entity too large: max accepted bytes is set to %d.\n", max_bytes)
+			return
+		}
+
 		tfs := make(map[string]int)
 
 		language := r.FormValue("language")
@@ -178,6 +188,16 @@ func WordcloudHandler(lang_lookup map[string]LangData) func(http.ResponseWriter,
 // curried bulk web handler to provide a list of wordclouds given a provided language and a list of sets of words with frequencies
 func WordcloudBulkHandler(lang_lookup map[string]LangData) func(http.ResponseWriter, *http.Request, httprouter.Params) {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+		// 75MB max accepted payload
+		max_bytes := 75000000
+		r.Body = http.MaxBytesReader(w, r.Body, int64(max_bytes))
+		err := r.ParseForm()
+		if err != nil {
+			w.WriteHeader(413)
+			fmt.Fprintf(w, "Request entity too large: max accepted bytes is set to %d.\n", max_bytes)
+			return
+		}
+		
 		manytfs := make([]map[string]int, 0, 500)
 
 		language := r.FormValue("language")
