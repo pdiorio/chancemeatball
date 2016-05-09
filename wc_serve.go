@@ -197,7 +197,7 @@ func WordcloudBulkHandler(lang_lookup map[string]LangData) func(http.ResponseWri
 			fmt.Fprintf(w, "Request entity too large: max accepted bytes is set to %d.\n", max_bytes)
 			return
 		}
-		
+
 		manytfs := make([]map[string]int, 0, 500)
 
 		language := r.FormValue("language")
