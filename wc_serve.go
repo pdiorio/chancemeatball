@@ -100,12 +100,12 @@ func read_lang_data(langdir string, numstopwords int) LangData {
 }
 
 // core wordcloud computations; for each word: filter out stopwords, normalize tfs and dfs, compute tfidf
-func compute_wordcloud(raw_tfs map[string]int, langdata LangData) map[string]map[string]float64 {
+func compute_wordcloud(raw_tfs map[string]float64, langdata LangData) map[string]map[string]float64 {
 	wordcloud := make(map[string]map[string]float64)
 
 	// compute set difference of input raw tf words and the stopwords
 	stopwords := langdata.stopwords
-	tfs := map[string]int{}
+	tfs := map[string]float64{}
 	for word, _ := range raw_tfs {
 		tfs[strings.ToLower(word)] = raw_tfs[word]
 	}
@@ -161,7 +161,7 @@ func WordcloudHandler(lang_lookup map[string]LangData) func(http.ResponseWriter,
 			return
 		}
 
-		tfs := make(map[string]int)
+		tfs := map[string]float64{}
 
 		language := r.FormValue("language")
 		json.NewDecoder(strings.NewReader(r.FormValue("tfs"))).Decode(&tfs)
@@ -189,16 +189,18 @@ func WordcloudHandler(lang_lookup map[string]LangData) func(http.ResponseWriter,
 func WordcloudBulkHandler(lang_lookup map[string]LangData) func(http.ResponseWriter, *http.Request, httprouter.Params) {
 	return func(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		// 75MB max accepted payload
-		max_bytes := 75000000
+		//max_bytes := 75000000
+		max_bytes := 75
 		r.Body = http.MaxBytesReader(w, r.Body, int64(max_bytes))
 		err := r.ParseForm()
 		if err != nil {
 			w.WriteHeader(413)
 			fmt.Fprintf(w, "Request entity too large: max accepted bytes is set to %d.\n", max_bytes)
+			fmt.Fprintf(w, "%s\n", err)
 			return
 		}
 
-		manytfs := make([]map[string]int, 0, 500)
+		manytfs := []map[string]float64{}
 
 		language := r.FormValue("language")
 		json.NewDecoder(strings.NewReader(r.FormValue("tfs"))).Decode(&manytfs)
@@ -223,6 +225,35 @@ func WordcloudBulkHandler(lang_lookup map[string]LangData) func(http.ResponseWri
 		w.WriteHeader(200)
 		fmt.Fprintf(w, "%s", wcj)
 	}
+}
+
+func Run(http_srv *http.Server, https_srv *http.Server, cert string, key string) chan error {
+
+    errs := make(chan error)
+
+    // Starting HTTP server
+    go func() {
+        log.Printf("Staring HTTP service on %s ...", http_srv.Addr)
+
+        if err := http_srv.ListenAndServe(); err != nil {
+            errs <- err
+        }
+
+    }()
+
+    // Starting HTTPS server
+    go func() {
+		if (cert != "") && (key != "") && (http_srv.Addr != https_srv.Addr) {    	
+	        log.Printf("Staring HTTPS service on %s ...", https_srv.Addr)
+	        if err := https_srv.ListenAndServeTLS(cert, key); err != nil {
+	            errs <- err
+	        }
+	    } else {
+	    	log.Printf("Not starting https")
+	    }
+    }()
+
+    return errs
 }
 
 func main() {
@@ -262,22 +293,36 @@ func main() {
 	router.POST("/wordcloud/bulk", WordcloudBulkHandler(lang_lookup))
 
 	// Check to see if HTTPS is possible to run
-	if (*certPtr != "") && (*keyPtr != "") && (*portPtr != *secportPtr) {
-		srvsec := &http.Server{
-			Addr:    ":" + strconv.Itoa(*secportPtr), // Traditionally ":443"
-			Handler: router,                          // Handler
-		}
-		fmt.Println("Starting HTTPS server...")
-		go srvsec.ListenAndServeTLS(*certPtr, *keyPtr)
-	} else {
-		fmt.Println("Not starting HTTPS server. Lacking either cert, key or unique port separate from http.\n")
-	}
+	//if (*certPtr != "") && (*keyPtr != "") && (*portPtr != *secportPtr) {
+	//	srvsec := &http.Server{
+	//		Addr:    ":" + strconv.Itoa(*secportPtr), // Traditionally ":443"
+	//		Handler: router,                          // Handler
+	//	}
+	//	fmt.Println("Starting HTTPS server...")
+	//	go srvsec.ListenAndServeTLS(*certPtr, *keyPtr)
+	//} else {
+	//	fmt.Println("Not starting HTTPS server. Lacking either cert, key or unique port separate from http.\n")
+	//}
 
+	srvsec := &http.Server{
+		Addr:    ":" + strconv.Itoa(*secportPtr), // Traditionally ":443"
+		Handler: router,                          // Handler
+	
+	}
 	// Always run HTTP server
 	srv := &http.Server{
 		Addr:    ":" + strconv.Itoa(*portPtr), // Traditionally ":80"
 		Handler: router,                       // Handler
 	}
-	fmt.Println("Starting HTTP server...")
-	log.Fatal(srv.ListenAndServe())
+	//fmt.Println("Starting HTTP server...")
+	//log.Fatal(srv.ListenAndServe())
+
+    errs := Run(srv, srvsec, *certPtr, *keyPtr)
+
+    // This will run forever until channel receives error
+    select {
+    case err := <-errs:
+        log.Printf("Could not start serving service due to (error: %s)", err)
+    }
+
 }
